@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#111320"/>
+      <stop offset="100%" style="stop-color:#080910"/>
+    </radialGradient>
+
+```
+<linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+  <stop offset="0%" style="stop-color:#4f9eff;stop-opacity:0"/>
+  <stop offset="40%" style="stop-color:#7c6aff;stop-opacity:1"/>
+  <stop offset="100%" style="stop-color:#ff6ab0;stop-opacity:0.8"/>
+</linearGradient>
+
+<filter id="glow">
+  <feGaussianBlur stdDeviation="8" result="blur"/>
+  <feMerge>
+    <feMergeNode in="blur"/>
+    <feMergeNode in="SourceGraphic"/>
+  </feMerge>
+</filter>
+
+<filter id="softglow">
+  <feGaussianBlur stdDeviation="18" result="blur"/>
+  <feMerge>
+    <feMergeNode in="blur"/>
+    <feMergeNode in="SourceGraphic"/>
+  </feMerge>
+</filter>
+
+<filter id="dotglow">
+  <feGaussianBlur stdDeviation="10" result="blur"/>
+  <feMerge>
+    <feMergeNode in="blur"/>
+    <feMergeNode in="SourceGraphic"/>
+  </feMerge>
+</filter>
+```
+
+  </defs>
+
+  <!-- Background -->
+
+  <rect width="512" height="512" rx="100" ry="100" fill="url(#bg)"/>
+
+  <!-- Outer faint halo ring -->
+
+<circle cx="256" cy="256" r="148" fill="none"
+stroke="#7c6aff" stroke-width="1" opacity="0.12"/>
+
+  <!-- Main arc — open circle (gap on the right, implying entry/exit) -->
+
+  <!-- Drawn as a path: large arc from bottom-right to top-right, leaving a gap -->
+
+<path d="M 390 290 A 148 148 0 1 1 390 222"
+fill="none"
+stroke="url(#arcGrad)"
+stroke-width="18"
+stroke-linecap="round"
+filter="url(#glow)"
+opacity="0.95"/>
+
+  <!-- Glow duplicate for bloom -->
+
+<path d="M 390 290 A 148 148 0 1 1 390 222"
+fill="none"
+stroke="#7c6aff"
+stroke-width="28"
+stroke-linecap="round"
+opacity="0.08"
+filter="url(#softglow)"/>
+
+  <!-- Particle / dot shooting through the gap — the "connection" -->
+
+  <circle cx="404" cy="256" r="14" fill="#ffffff" opacity="0.95" filter="url(#dotglow)"/>
+  <!-- Dot trail -->
+  <circle cx="404" cy="256" r="22" fill="#7c6aff" opacity="0.15" filter="url(#dotglow)"/>
+
+  <!-- Tiny trailing dots suggesting motion -->
+
+  <circle cx="375" cy="256" r="5" fill="#4f9eff" opacity="0.4"/>
+  <circle cx="355" cy="256" r="3" fill="#4f9eff" opacity="0.2"/>
+  <circle cx="340" cy="256" r="2" fill="#4f9eff" opacity="0.1"/>
+
+</svg>
