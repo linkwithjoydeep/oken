@@ -13,7 +13,7 @@ mod ssh;
 mod ssh_config;
 
 use std::env;
-use std::io::{self, Write};
+use std::io::{self, BufRead, Write};
 
 use anyhow::Result;
 use clap::Parser;
@@ -27,15 +27,22 @@ fn main() -> Result<()> {
         // Single bare arg that doesn't look like a direct SSH target — maybe a partial filter
         if args.len() == 2 && !args[1].contains('@') && !args[1].starts_with('-') {
             let all_hosts = hosts::list_all_hosts().unwrap_or_default();
-            if let Some(host) = all_hosts.iter().find(|h| h.alias == args[1]) {
-                // Exact match → resolve to real SSH args
+            let query = &args[1];
+            let exact = all_hosts.iter().find(|h| h.alias == *query);
+            let has_other_matches = all_hosts
+                .iter()
+                .any(|h| h.alias != *query && h.alias.contains(query.as_str()));
+
+            if exact.is_some() && !has_other_matches {
+                // Only one match — connect directly
+                let host = exact.unwrap();
                 let ssh_args = build_ssh_args(host);
                 record_host(host);
                 print_connecting(&ssh_args);
                 return ssh::passthrough(&ssh_args);
             } else {
-                // No exact match → open picker pre-filtered
-                match picker::run_picker(Some(&args[1])) {
+                // Multiple matches or no exact match → open picker pre-filtered
+                match picker::run_picker(Some(query)) {
                     Ok(host) => {
                         let ssh_args = build_ssh_args(&host);
                         record_host(&host);
@@ -47,6 +54,7 @@ fn main() -> Result<()> {
             }
         }
         // Multi-arg → passthrough as-is (user typed real SSH args)
+        maybe_prompt_save(&args[1..]);
         record_if_connecting(&args[1..]);
         print_connecting(&args[1..]);
         return ssh::passthrough(&args[1..]);
@@ -69,6 +77,7 @@ fn main() -> Result<()> {
                     Err(_) => Ok(()), // user cancelled, exit cleanly
                 }
             } else {
+                maybe_prompt_save(&cli.ssh_args);
                 record_if_connecting(&cli.ssh_args);
                 print_connecting(&cli.ssh_args);
                 ssh::passthrough(&cli.ssh_args)
@@ -126,6 +135,104 @@ fn record_if_connecting(args: &[String]) {
     if let Some(host) = ssh::extract_target_host(args) {
         let _ = history::record_connection(&host, None, None, None);
     }
+}
+
+/// Prompt to save an unknown host on first connect.
+/// Best-effort: any I/O or save error is silently ignored.
+fn maybe_prompt_save(args: &[String]) {
+    let _ = (|| -> Option<()> {
+        let target = ssh::extract_target_host_full(args)?;
+
+        // Only prompt for user@host targets
+        if !target.contains('@') {
+            return None;
+        }
+
+        let (user, hostname) = target.split_once('@')?;
+
+        // Check if already known (must match both user AND hostname)
+        let all_hosts = hosts::list_all_hosts().unwrap_or_default();
+        let host_known = all_hosts.iter().any(|h| {
+            h.alias == hostname || h.hostname.as_deref() == Some(hostname)
+        });
+        let exact_known = all_hosts.iter().any(|h| {
+            let host_matches = h.alias == hostname
+                || h.hostname.as_deref() == Some(hostname);
+            let user_matches = h.user.as_deref() == Some(user);
+            (host_matches && user_matches) || h.alias == target
+        });
+        if exact_known {
+            return None;
+        }
+
+        // Show a contextual hint and prompt depending on scenario
+        let stdin = io::stdin();
+        let alias;
+
+        if host_known {
+            // Known host, new user — no sensible default, require a name
+            eprintln!(
+                "\x1b[2mNew user \x1b[0m\x1b[1m{user}\x1b[0m\x1b[2m for known host \x1b[0m\x1b[1m{hostname}\x1b[0m\x1b[2m — save it so you can pick it next time?\x1b[0m",
+            );
+            eprint!("\x1b[2mSave as (Enter to skip):\x1b[0m ");
+            io::stderr().flush().ok()?;
+
+            let line = stdin.lock().lines().next()?.ok()?;
+            let input = line.trim().to_string();
+            if input.is_empty() {
+                return None;
+            }
+            alias = input;
+        } else {
+            // Completely new host — default alias is the hostname
+            eprintln!(
+                "\x1b[2mLooks like a new host. Save \x1b[0m\x1b[1m{target}\x1b[0m\x1b[2m so it shows up in the picker?\x1b[0m",
+            );
+            eprint!("\x1b[2mSave as (Enter = \x1b[0m{hostname}\x1b[2m, \"n\" to skip):\x1b[0m ");
+            io::stderr().flush().ok()?;
+
+            let line = stdin.lock().lines().next()?.ok()?;
+            let input = line.trim().to_string();
+            if input.eq_ignore_ascii_case("n") || input.eq_ignore_ascii_case("no") {
+                return None;
+            }
+            alias = if input.is_empty() {
+                hostname.to_string()
+            } else {
+                input
+            };
+        }
+
+        // Prompt for tags
+        eprint!("Tags (comma-separated, Enter to skip): ");
+        io::stderr().flush().ok()?;
+
+        let tag_line = stdin.lock().lines().next()?.ok()?;
+        let tags: Vec<String> = tag_line
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
+
+        // Build entry and save
+        let port = ssh::extract_port(args);
+        let identity_file = ssh::extract_identity_file(args);
+        let entry = hosts_toml::HostEntry {
+            hostname: hostname.to_string(),
+            user: Some(user.to_string()),
+            port,
+            identity_file,
+            tags,
+        };
+
+        let path = hosts_toml_path().ok()?;
+        match hosts_toml::add_host(&path, &alias, entry) {
+            Ok(()) => eprintln!("Saved host '{alias}'"),
+            Err(e) => eprintln!("Warning: could not save host: {e}"),
+        }
+
+        Some(())
+    })();
 }
 
 fn is_known_subcommand(arg: &str) -> bool {

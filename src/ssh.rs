@@ -81,6 +81,49 @@ pub fn extract_target_host(args: &[String]) -> Option<String> {
     None
 }
 
+/// Like `extract_target_host()` but returns the full `user@host` string
+/// instead of stripping the user part.
+pub fn extract_target_host_full(args: &[String]) -> Option<String> {
+    let mut skip_next = false;
+    for arg in args {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if FLAGS_WITH_VALUES.contains(&arg.as_str()) {
+            skip_next = true;
+            continue;
+        }
+        if arg.starts_with('-') {
+            continue;
+        }
+        return Some(arg.clone());
+    }
+    None
+}
+
+/// Extract the port from SSH arguments (scans for `-p <port>`).
+pub fn extract_port(args: &[String]) -> Option<u16> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "-p" {
+            return iter.next().and_then(|v| v.parse().ok());
+        }
+    }
+    None
+}
+
+/// Extract the identity file from SSH arguments (scans for `-i <path>`).
+pub fn extract_identity_file(args: &[String]) -> Option<String> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "-i" {
+            return iter.next().cloned();
+        }
+    }
+    None
+}
+
 /// Replace the current process with `ssh`, passing through all arguments.
 /// On Unix this uses exec() so signals, TTY, and exit codes work perfectly.
 pub fn passthrough(args: &[String]) -> Result<()> {
