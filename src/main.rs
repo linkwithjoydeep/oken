@@ -113,9 +113,9 @@ fn connect_to_host(
         return Ok(());
     }
     let mut ssh_args = build_ssh_args(host);
+    let target = ssh_args.first().cloned().unwrap_or_default();
     inject_keepalive(&mut ssh_args, cfg.keepalive_interval);
     record_host(host);
-    let target = ssh_args.first().cloned().unwrap_or_default();
     audit::log_connection(&host.alias, &target);
     print_connecting(&ssh_args);
     if no_reconnect || !cfg.reconnect {
