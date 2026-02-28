@@ -37,12 +37,40 @@ On top of that, it adds the features that `ssh` has never had: a fuzzy host pick
 
 ## Installation
 
-### From source
+### macOS and Linux
 
 ```bash
-git clone https://github.com/yourname/oken
-cd oken
-cargo install --path .
+curl -LsSf https://github.com/linkwithjoydeep/oken/releases/latest/download/oken-installer.sh | sh
+```
+
+This downloads the correct binary for your platform and installs it to `~/.cargo/bin/oken` (or `~/.local/bin/oken` if Cargo is not present).
+
+### Windows
+
+```powershell
+powershell -c "irm https://github.com/linkwithjoydeep/oken/releases/latest/download/oken-installer.ps1 | iex"
+```
+
+### Direct download
+
+Pre-built archives for every platform are attached to each [GitHub Release](https://github.com/linkwithjoydeep/oken/releases/latest):
+
+| Platform | File |
+|---|---|
+| macOS Apple Silicon | `oken-aarch64-apple-darwin.tar.xz` |
+| macOS Intel | `oken-x86_64-apple-darwin.tar.xz` |
+| Linux arm64 | `oken-aarch64-unknown-linux-gnu.tar.xz` |
+| Linux x86_64 | `oken-x86_64-unknown-linux-gnu.tar.xz` |
+| Windows x86_64 | `oken-x86_64-pc-windows-msvc.zip` |
+
+Each archive contains the `oken` binary, `LICENSE`, and `README.md`. SHA-256 checksums are provided alongside every file.
+
+### From source
+
+Requires [Rust](https://rustup.rs) 1.80 or later.
+
+```bash
+cargo install --git https://github.com/linkwithjoydeep/oken
 ```
 
 ### Optional: alias as `ssh`
