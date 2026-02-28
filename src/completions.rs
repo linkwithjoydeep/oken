@@ -53,34 +53,15 @@ fn detect_shell() -> Result<Shell> {
 // ── zsh ───────────────────────────────────────────────────────────────────────
 
 fn install_zsh(dir: Option<PathBuf>) -> Result<()> {
-    if let Some(d) = dir {
-        // Explicit --dir: write there, show hint so the user knows what to add.
-        std::fs::create_dir_all(&d)
-            .with_context(|| format!("could not create {}", d.display()))?;
-        let file = d.join("_oken");
-        write_completions(Shell::Zsh, &file)?;
-        println!("Installed zsh completions → {}", file.display());
-        println!(
-            "\nEnsure your ~/.zshrc (or $ZDOTDIR/.zshrc) contains:\n\
-             \n  fpath=({dir} $fpath)\n  autoload -Uz compinit && compinit\
-             \n\nThen reload: exec zsh",
-            dir = d.display()
-        );
-        return Ok(());
-    }
+    let target_dir = match dir {
+        Some(d) => {
+            std::fs::create_dir_all(&d)
+                .with_context(|| format!("could not create {}", d.display()))?;
+            d
+        }
+        None => resolve_zsh_dir()?,
+    };
 
-    // 1. Prefer Homebrew's site-functions — already in fpath for Homebrew users,
-    //    requires zero shell config changes.
-    if let Some(brew_dir) = find_brew_site_functions() {
-        let file = brew_dir.join("_oken");
-        write_completions(Shell::Zsh, &file)?;
-        println!("Installed zsh completions → {}", file.display());
-        println!("Reload your shell to activate: exec zsh");
-        return Ok(());
-    }
-
-    // 2. Fall back to a user-owned directory and patch .zshrc automatically.
-    let target_dir = resolve_zsh_dir()?;
     let file = target_dir.join("_oken");
     write_completions(Shell::Zsh, &file)?;
     println!("Installed zsh completions → {}", file.display());
@@ -88,33 +69,6 @@ fn install_zsh(dir: Option<PathBuf>) -> Result<()> {
     patch_zshrc(&target_dir)?;
     println!("Reload your shell to activate: exec zsh");
     Ok(())
-}
-
-/// Returns the first Homebrew zsh site-functions directory that exists and is
-/// writable by the current user. These dirs are already in $fpath for any user
-/// who has `eval "$(brew shellenv)"` in their shell config.
-fn find_brew_site_functions() -> Option<PathBuf> {
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Ok(prefix) = std::env::var("HOMEBREW_PREFIX") {
-        candidates.push(PathBuf::from(&prefix).join("share/zsh/site-functions"));
-    }
-    candidates.push(PathBuf::from("/opt/homebrew/share/zsh/site-functions"));
-    candidates.push(PathBuf::from("/usr/local/share/zsh/site-functions"));
-    candidates.push(PathBuf::from("/home/linuxbrew/.linuxbrew/share/zsh/site-functions"));
-
-    candidates.into_iter().find(|p| p.is_dir() && is_writable_dir(p))
-}
-
-/// Check write access by attempting a canary file creation.
-fn is_writable_dir(dir: &Path) -> bool {
-    let canary = dir.join(".oken_write_test");
-    match std::fs::OpenOptions::new().write(true).create(true).open(&canary) {
-        Ok(_) => {
-            let _ = std::fs::remove_file(&canary);
-            true
-        }
-        Err(_) => false,
-    }
 }
 
 /// Appends the required fpath line (and compinit if missing) to the user's

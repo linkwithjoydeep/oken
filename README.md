@@ -252,8 +252,7 @@ oken completions
 
 `oken` auto-detects your shell and picks the best destination:
 
-- **zsh (Homebrew):** writes to `$(brew --prefix)/share/zsh/site-functions/_oken` — already in your `$fpath`, no config changes needed.
-- **zsh (no Homebrew):** writes to `~/.zfunc/_oken` (or your `$ZDOTDIR/.zfunc`) and patches your `.zshrc` with the required `fpath` entry automatically.
+- **zsh:** writes to `~/.zfunc/_oken` (or `$ZDOTDIR/.zfunc`) and automatically patches your `.zshrc` with the required `fpath` entry and `compinit`.
 - **fish:** writes to `~/.config/fish/completions/oken.fish` — fish auto-sources this directory, no setup needed.
 - **bash:** writes to `~/.local/share/bash-completion/completions/oken` — auto-sourced when the `bash-completion` package is installed.
 
