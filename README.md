@@ -37,6 +37,8 @@ On top of that, it adds the features that `ssh` has never had: a fuzzy host pick
 
 ## Installation
 
+> **Prerequisite:** `oken` delegates all SSH work to your system's `ssh` binary — it does not implement SSH itself. Make sure OpenSSH is installed before using `oken`. It is pre-installed on macOS and most Linux distributions. On Windows, enable it via *Settings → Optional Features → OpenSSH Client*, or install [Git for Windows](https://gitforwindows.org) which bundles it.
+
 ### macOS and Linux
 
 ```bash
