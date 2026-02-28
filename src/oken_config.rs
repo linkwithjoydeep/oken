@@ -43,8 +43,16 @@ impl Default for OkenConfig {
 }
 
 /// Load config from `~/.config/oken/config.toml`. Falls back to defaults on missing/invalid file.
+/// Clamps values to sensible minimums to prevent silent misbehaviour.
 pub fn load_config() -> OkenConfig {
-    load_config_impl().unwrap_or_default()
+    let mut cfg = load_config_impl().unwrap_or_default();
+    if cfg.keepalive_interval == 0 {
+        cfg.keepalive_interval = 1;
+    }
+    if cfg.reconnect_delay_secs == 0 {
+        cfg.reconnect_delay_secs = 1;
+    }
+    cfg
 }
 
 fn load_config_impl() -> Option<OkenConfig> {

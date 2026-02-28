@@ -6,12 +6,6 @@ use crate::config;
 use crate::hosts_toml;
 use crate::ssh_config;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HostSource {
-    SshConfig,
-    HostsToml,
-}
-
 #[derive(Debug, Clone)]
 pub struct Host {
     pub alias: String,
@@ -20,7 +14,8 @@ pub struct Host {
     pub port: Option<u16>,
     pub identity_file: Option<String>,
     pub tags: Vec<String>,
-    pub source: HostSource,
+    /// True when this host comes from ~/.ssh/config (read-only; not managed by oken).
+    pub from_ssh_config: bool,
 }
 
 /// Load all hosts from ssh_config and hosts.toml, with hosts.toml winning on conflicts.
@@ -39,7 +34,7 @@ pub fn list_all_hosts() -> Result<Vec<Host>> {
                 port: None,
                 identity_file: None,
                 tags: Vec::new(),
-                source: HostSource::SshConfig,
+                from_ssh_config: true,
             },
         );
     }
@@ -58,7 +53,7 @@ pub fn list_all_hosts() -> Result<Vec<Host>> {
                 port: entry.port,
                 identity_file: entry.identity_file,
                 tags: entry.tags,
-                source: HostSource::HostsToml,
+                from_ssh_config: false,
             },
         );
     }

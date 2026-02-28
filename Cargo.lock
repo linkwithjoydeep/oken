@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "oken"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -721,6 +721,7 @@ dependencies = [
  "ratatui",
  "rusqlite",
  "serde",
+ "serde_json",
  "tempfile",
  "toml",
  "ureq",

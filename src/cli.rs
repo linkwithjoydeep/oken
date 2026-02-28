@@ -87,6 +87,8 @@ pub enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    /// Show current configuration (defaults + ~/.config/oken/config.toml overrides)
+    Config,
     /// Check for a newer version and print upgrade instructions
     Update,
     /// Generate shell completions
@@ -145,6 +147,11 @@ pub enum TunnelCommand {
     },
     /// Stop a running tunnel
     Stop {
+        /// Tunnel profile name
+        name: String,
+    },
+    /// Remove a saved tunnel profile
+    Remove {
         /// Tunnel profile name
         name: String,
     },

@@ -28,7 +28,6 @@ pub fn add_tunnel(path: &Path, name: &str, entry: TunnelEntry) -> Result<()> {
     save_tunnels(path, &tunnels)
 }
 
-#[allow(dead_code)]
 pub fn remove_tunnel(path: &Path, name: &str) -> Result<()> {
     let mut tunnels = load_tunnels(path)?;
     if tunnels.remove(name).is_none() {

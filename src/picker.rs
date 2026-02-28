@@ -14,6 +14,7 @@ use ratatui::Terminal;
 
 use crate::history;
 use crate::hosts;
+use crate::time_utils;
 
 struct PickerHost {
     host: hosts::Host,
@@ -24,7 +25,7 @@ struct PickerHost {
 pub fn run_picker(initial_filter: Option<&str>) -> Result<hosts::Host> {
     let all_hosts = hosts::list_all_hosts().unwrap_or_default();
     if all_hosts.is_empty() {
-        bail!("no hosts found in ~/.ssh/config or ~/.config/oken/hosts.toml");
+        bail!("no hosts found — add one with: oken host add <name> <user@host>");
     }
 
     let recent = history::last_connected_hosts().unwrap_or_default();
@@ -86,6 +87,8 @@ fn run_picker_loop(
     search: &mut String,
     selected: &mut usize,
 ) -> Result<hosts::Host> {
+    let mut scroll_offset: usize = 0;
+
     loop {
         let filtered: Vec<usize> = filter_hosts(picker_hosts, search);
         let total = picker_hosts.len();
@@ -95,15 +98,37 @@ fn run_picker_loop(
             *selected = matched - 1;
         }
 
+        let show_headers =
+            filtered.iter().any(|&idx| !picker_hosts[idx].host.tags.is_empty());
+
+        // Compute which render-row (including group headers) the selected item lands on,
+        // then adjust scroll_offset to keep it in view.
+        let selected_render_row = render_row_of(picker_hosts, &filtered, *selected, show_headers);
+        let term_height = terminal.size().map(|r| r.height as usize).unwrap_or(24);
+        // 1 row for search bar, 1 for the list border
+        let visible_rows = term_height.saturating_sub(2);
+
+        if selected_render_row < scroll_offset {
+            scroll_offset = selected_render_row;
+        } else if visible_rows > 0 && selected_render_row >= scroll_offset + visible_rows {
+            scroll_offset = selected_render_row + 1 - visible_rows;
+        }
+
         terminal.draw(|frame| {
             let area = frame.area();
             let chunks = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(area);
 
             draw_search_line(frame, chunks[0], search, matched, total);
-            draw_host_list(frame, chunks[1], picker_hosts, &filtered, *selected);
+            draw_host_list(
+                frame,
+                chunks[1],
+                picker_hosts,
+                &filtered,
+                *selected,
+                scroll_offset,
+            );
         })?;
 
-        // Poll for events
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind != KeyEventKind::Press {
@@ -142,6 +167,32 @@ fn run_picker_loop(
             }
         }
     }
+}
+
+/// Return the visual row index (0-based, including group-header rows) of the
+/// item at `selected` in the filtered list.
+fn render_row_of(
+    picker_hosts: &[PickerHost],
+    filtered: &[usize],
+    selected: usize,
+    show_headers: bool,
+) -> usize {
+    let mut row = 0;
+    let mut last_group: Option<Option<String>> = None;
+    for (i, &idx) in filtered.iter().enumerate() {
+        if show_headers {
+            let group = picker_hosts[idx].host.tags.first().cloned();
+            if last_group.as_ref() != Some(&group) {
+                last_group = Some(group);
+                row += 1; // header row
+            }
+        }
+        if i == selected {
+            return row;
+        }
+        row += 1;
+    }
+    row
 }
 
 fn filter_hosts(picker_hosts: &[PickerHost], query: &str) -> Vec<usize> {
@@ -200,7 +251,21 @@ fn draw_host_list(
     picker_hosts: &[PickerHost],
     filtered: &[usize],
     selected: usize,
+    scroll_offset: usize,
 ) {
+    let block = Block::default()
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    if filtered.is_empty() {
+        let msg = ListItem::new(Line::from(vec![Span::styled(
+            "  No matches",
+            Style::default().fg(Color::DarkGray),
+        )]));
+        frame.render_widget(List::new(vec![msg]).block(block), area);
+        return;
+    }
+
     // Determine if we should show group headers (any tagged hosts in the filtered set)
     let show_headers = filtered.iter().any(|&idx| !picker_hosts[idx].host.tags.is_empty());
 
@@ -262,12 +327,10 @@ fn draw_host_list(
         items.push(ListItem::new(Line::styled(text, style)));
     }
 
-    let list = List::new(items).block(
-        Block::default()
-            .borders(Borders::TOP)
-            .border_style(Style::default().fg(Color::DarkGray)),
-    );
-    frame.render_widget(list, area);
+    // Only render the rows that fit in the visible window (area height minus border).
+    let visible_height = area.height.saturating_sub(1) as usize;
+    let visible: Vec<ListItem> = items.into_iter().skip(scroll_offset).take(visible_height).collect();
+    frame.render_widget(List::new(visible).block(block), area);
 }
 
 fn format_relative_time(iso: &str) -> String {
@@ -278,10 +341,7 @@ fn format_relative_time(iso: &str) -> String {
     }
     let date_parts: Vec<u32> = parts[0].split('-').filter_map(|s| s.parse().ok()).collect();
     let time_str = parts[1].trim_end_matches('Z');
-    let time_parts: Vec<u32> = time_str
-        .split(':')
-        .filter_map(|s| s.parse().ok())
-        .collect();
+    let time_parts: Vec<u32> = time_str.split(':').filter_map(|s| s.parse().ok()).collect();
 
     if date_parts.len() != 3 || time_parts.len() < 2 {
         return iso.to_string();
@@ -289,20 +349,19 @@ fn format_relative_time(iso: &str) -> String {
 
     let now = {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let dur = SystemTime::now()
+        SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
-        dur.as_secs() as i64
+            .unwrap_or_default()
+            .as_secs() as i64
     };
 
-    // Convert timestamp to proper unix seconds (rough but good enough for relative display)
-    // More precise: days since epoch
-    let epoch_days = epoch_days(date_parts[0], date_parts[1], date_parts[2]);
-    let ts_unix = epoch_days * 86400 + time_parts[0] as i64 * 3600 + time_parts[1] as i64 * 60
+    let ts_unix = time_utils::epoch_days(date_parts[0], date_parts[1], date_parts[2]) * 86400
+        + time_parts[0] as i64 * 3600
+        + time_parts[1] as i64 * 60
         + time_parts.get(2).copied().unwrap_or(0) as i64;
 
     let diff = now - ts_unix;
-    if diff < 0 {
+    if diff < 60 {
         return "just now".to_string();
     }
 
@@ -312,31 +371,15 @@ fn format_relative_time(iso: &str) -> String {
     let weeks = days / 7;
     let months = days / 30;
 
-    if minutes < 1 {
-        "just now".to_string()
-    } else if minutes < 60 {
-        format!("{}m ago", minutes)
+    if minutes < 60 {
+        format!("{minutes}m ago")
     } else if hours < 24 {
-        format!("{}h ago", hours)
+        format!("{hours}h ago")
     } else if days < 7 {
-        format!("{}d ago", days)
+        format!("{days}d ago")
     } else if weeks < 5 {
-        format!("{}w ago", weeks)
+        format!("{weeks}w ago")
     } else {
-        format!("{}mo ago", months)
+        format!("{months}mo ago")
     }
-}
-
-/// Days since Unix epoch for a given date (good enough for relative time).
-fn epoch_days(year: u32, month: u32, day: u32) -> i64 {
-    // Simplified Julian day calculation
-    let y = year as i64;
-    let m = month as i64;
-    let d = day as i64;
-
-    let a = (14 - m) / 12;
-    let y2 = y + 4800 - a;
-    let m2 = m + 12 * a - 3;
-    let jdn = d + (153 * m2 + 2) / 5 + 365 * y2 + y2 / 4 - y2 / 100 + y2 / 400 - 32045;
-    jdn - 2440588 // Unix epoch is Julian day 2440588
 }

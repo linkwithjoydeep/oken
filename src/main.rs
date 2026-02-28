@@ -1,20 +1,16 @@
 mod audit;
 mod cli;
 mod update_check;
-#[allow(dead_code)]
 mod config;
-#[allow(dead_code)]
 mod history;
-#[allow(dead_code)]
 mod hosts;
-#[allow(dead_code)]
 mod hosts_toml;
 mod oken_config;
 mod picker;
 mod reconnect;
 mod ssh;
-#[allow(dead_code)]
 mod ssh_config;
+mod time_utils;
 mod tunnels;
 
 use std::env;
@@ -118,11 +114,7 @@ fn connect_to_host(
     record_host(host);
     print_connecting(&ssh_args);
     let start = std::time::Instant::now();
-    let exit_code = if no_reconnect || !cfg.reconnect {
-        ssh::run(&ssh_args)?
-    } else {
-        reconnect::run_with_reconnect(&ssh_args, cfg.reconnect_retries, cfg.reconnect_delay_secs)?
-    };
+    let exit_code = run_ssh(&ssh_args, no_reconnect, cfg)?;
     audit::log_session(&host.alias, &target, start.elapsed().as_secs(), exit_code);
     std::process::exit(exit_code);
 }
@@ -157,13 +149,18 @@ fn connect_passthrough(
     let alias = ssh::extract_target_host_full(ssh_args).unwrap_or_default();
     print_connecting(&args);
     let start = std::time::Instant::now();
-    let exit_code = if no_reconnect || !cfg.reconnect {
-        ssh::run(&args)?
-    } else {
-        reconnect::run_with_reconnect(&args, cfg.reconnect_retries, cfg.reconnect_delay_secs)?
-    };
+    let exit_code = run_ssh(&args, no_reconnect, cfg)?;
     audit::log_session(&alias, &alias, start.elapsed().as_secs(), exit_code);
     std::process::exit(exit_code);
+}
+
+/// Run SSH, using the reconnect wrapper unless disabled.
+fn run_ssh(args: &[String], no_reconnect: bool, cfg: &oken_config::OkenConfig) -> Result<i32> {
+    if no_reconnect || !cfg.reconnect {
+        ssh::run(args)
+    } else {
+        reconnect::run_with_reconnect(args, cfg.reconnect_retries, cfg.reconnect_delay_secs)
+    }
 }
 
 /// Prepend `-o ServerAliveInterval=N -o ServerAliveCountMax=3` unless already set.
@@ -369,21 +366,10 @@ fn maybe_prompt_save(args: &[String]) {
 }
 
 fn is_known_subcommand(arg: &str) -> bool {
-    matches!(
-        arg,
-        "host"
-            | "tunnel"
-            | "exec"
-            | "snippet"
-            | "print"
-            | "audit"
-            | "keys"
-            | "export"
-            | "import"
-            | "completions"
-            | "update"
-            | "help"
-    )
+    use clap::CommandFactory;
+    Cli::command()
+        .get_subcommands()
+        .any(|c| c.get_name() == arg)
 }
 
 fn is_oken_flag(arg: &str) -> bool {
@@ -407,6 +393,14 @@ fn run_subcommand(cmd: Command, cfg: &oken_config::OkenConfig) -> Result<()> {
         Command::Keys { .. } => stub("keys"),
         Command::Export { .. } => stub("export"),
         Command::Import { .. } => stub("import"),
+        Command::Config => {
+            println!("reconnect:          {}", cfg.reconnect);
+            println!("reconnect_retries:  {}", cfg.reconnect_retries);
+            println!("reconnect_delay:    {}s", cfg.reconnect_delay_secs);
+            println!("keepalive_interval: {}s", cfg.keepalive_interval);
+            println!("danger_tags:        {}", cfg.danger_tags.join(", "));
+            Ok(())
+        }
         Command::Update => {
             update_check::force_check()?;
             Ok(())
@@ -484,15 +478,32 @@ fn run_tunnel_command(cmd: TunnelCommand) -> Result<()> {
             cmd_args.extend(entry.ssh_flags.clone());
             cmd_args.push(entry.host.clone());
 
-            std::process::Command::new(&ssh)
+            let mut child = std::process::Command::new(&ssh)
                 .args(&cmd_args)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
+                .stderr(std::process::Stdio::inherit())
                 .spawn()
                 .map_err(|e| anyhow::anyhow!("failed to start tunnel: {e}"))?;
 
-            println!("Started tunnel '{name}'");
+            // Brief wait to catch immediate failures (bad host, auth error, etc.)
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    anyhow::bail!(
+                        "tunnel '{name}' failed to start (exit {})",
+                        status.code().unwrap_or(1)
+                    );
+                }
+                Ok(None) => println!("Started tunnel '{name}'"),
+                Err(e) => anyhow::bail!("could not check tunnel status: {e}"),
+            }
+            Ok(())
+        }
+
+        TunnelCommand::Remove { name } => {
+            tunnels::remove_tunnel(&path, &name)?;
+            println!("Removed tunnel '{name}'");
             Ok(())
         }
 
@@ -608,71 +619,87 @@ fn run_host_command(cmd: HostCommand) -> Result<()> {
         }
 
         HostCommand::List => {
-            let path = hosts_toml_path()?;
-            let hosts = hosts_toml::load_hosts_toml(&path)?;
-
-            if hosts.is_empty() {
-                println!("No hosts configured. Use `oken host add` to add one.");
+            let mut all = hosts::list_all_hosts().unwrap_or_default();
+            if all.is_empty() {
+                println!("No hosts found. Add one with: oken host add <name> <user@host>");
                 return Ok(());
             }
 
-            // Collect and sort by name for stable output
-            let mut entries: Vec<_> = hosts.into_iter().collect();
-            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            // oken-managed first, then ssh-config; alphabetical within each group
+            all.sort_by(|a, b| {
+                a.from_ssh_config
+                    .cmp(&b.from_ssh_config)
+                    .then(a.alias.cmp(&b.alias))
+            });
 
-            // Calculate column widths
-            let name_w = entries.iter().map(|(n, _)| n.len()).max().unwrap_or(4).max(4);
-            let target_w = entries
+            let name_w = all.iter().map(|h| h.alias.len()).max().unwrap_or(4).max(4);
+            let target_w = all
                 .iter()
-                .map(|(_, e)| {
-                    match &e.user {
-                        Some(u) => u.len() + 1 + e.hostname.len(),
-                        None => e.hostname.len(),
-                    }
+                .map(|h| match (&h.user, &h.hostname) {
+                    (Some(u), Some(hn)) => u.len() + 1 + hn.len(),
+                    (None, Some(hn)) => hn.len(),
+                    _ => 0,
                 })
                 .max()
                 .unwrap_or(6)
                 .max(6);
 
             println!(
-                "{:<name_w$}  {:<target_w$}  {:>5}  {}",
-                "NAME", "TARGET", "PORT", "TAGS"
+                "{:<name_w$}  {:<target_w$}  {:>5}  {:<16}  {}",
+                "NAME", "TARGET", "PORT", "TAGS", "SOURCE"
             );
-            for (name, entry) in &entries {
-                let target = match &entry.user {
-                    Some(u) => format!("{}@{}", u, entry.hostname),
-                    None => entry.hostname.clone(),
+            for h in &all {
+                let target = match (&h.user, &h.hostname) {
+                    (Some(u), Some(hn)) => format!("{u}@{hn}"),
+                    (None, Some(hn)) => hn.clone(),
+                    _ => String::new(),
                 };
-                let port = entry
-                    .port
-                    .map(|p| p.to_string())
-                    .unwrap_or_else(|| "-".to_string());
-                let tags = if entry.tags.is_empty() {
-                    "-".to_string()
+                let port = h.port.map(|p| p.to_string()).unwrap_or_else(|| "-".into());
+                let tags = if h.tags.is_empty() {
+                    "-".into()
                 } else {
-                    entry.tags.join(", ")
+                    h.tags.join(", ")
+                };
+                let source = if h.from_ssh_config {
+                    "\x1b[2mssh config\x1b[0m"
+                } else {
+                    ""
                 };
                 println!(
-                    "{:<name_w$}  {:<target_w$}  {:>5}  {}",
-                    name, target, port, tags
+                    "{:<name_w$}  {:<target_w$}  {:>5}  {:<16}  {}",
+                    h.alias, target, port, tags, source
                 );
             }
             Ok(())
         }
 
         HostCommand::Remove { name } => {
+            let all = hosts::list_all_hosts().unwrap_or_default();
+            if let Some(h) = all.iter().find(|h| h.alias == name) {
+                if h.from_ssh_config {
+                    eprintln!("'{name}' is managed by ~/.ssh/config — remove it there instead.");
+                    std::process::exit(1);
+                }
+            }
             let path = hosts_toml_path()?;
             hosts_toml::remove_host(&path, &name)?;
             println!("Removed host '{name}'");
             Ok(())
         }
 
-        HostCommand::Edit { .. } => {
+        HostCommand::Edit { name } => {
+            if let Some(ref n) = name {
+                let all = hosts::list_all_hosts().unwrap_or_default();
+                if let Some(h) = all.iter().find(|h| &h.alias == n) {
+                    if h.from_ssh_config {
+                        eprintln!("'{n}' is managed by ~/.ssh/config — edit that file instead.");
+                        std::process::exit(1);
+                    }
+                }
+            }
             let path = hosts_toml_path()?;
             let editor = env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-            let status = std::process::Command::new(&editor)
-                .arg(&path)
-                .status()?;
+            let status = std::process::Command::new(&editor).arg(&path).status()?;
             if !status.success() {
                 anyhow::bail!("editor exited with status {}", status);
             }

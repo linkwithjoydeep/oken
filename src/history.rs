@@ -21,7 +21,8 @@ fn open_db() -> Result<Connection> {
             user         TEXT,
             port         INTEGER,
             connected_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-        );",
+        );
+        CREATE INDEX IF NOT EXISTS idx_connections_host_alias ON connections (host_alias);",
     )?;
     Ok(conn)
 }

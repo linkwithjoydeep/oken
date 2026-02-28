@@ -120,20 +120,13 @@ fn fetch_latest_tag() -> anyhow::Result<String> {
     extract_tag_name(&response)
 }
 
-/// Pull `tag_name` out of a GitHub releases JSON payload without a full parser.
 fn extract_tag_name(json: &str) -> anyhow::Result<String> {
-    let key = "\"tag_name\"";
-    let pos = json
-        .find(key)
-        .ok_or_else(|| anyhow::anyhow!("tag_name not found in response"))?;
-    let after_key = json[pos + key.len()..].trim_start_matches([' ', ':', '\t', '\n', '\r']);
-    let inner = after_key
-        .strip_prefix('"')
-        .ok_or_else(|| anyhow::anyhow!("unexpected tag_name format"))?;
-    let end = inner
-        .find('"')
-        .ok_or_else(|| anyhow::anyhow!("unterminated tag_name string"))?;
-    Ok(inner[..end].to_string())
+    let v: serde_json::Value = serde_json::from_str(json)
+        .map_err(|e| anyhow::anyhow!("invalid JSON from GitHub API: {e}"))?;
+    v["tag_name"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| anyhow::anyhow!("tag_name not found in GitHub API response"))
 }
 
 /// Returns true if `latest` is a higher semver than `current`.
