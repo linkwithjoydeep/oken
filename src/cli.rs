@@ -87,6 +87,8 @@ pub enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    /// Check for a newer version and print upgrade instructions
+    Update,
     /// Generate shell completions
     Completions {
         /// Shell to generate completions for

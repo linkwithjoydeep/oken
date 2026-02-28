@@ -51,6 +51,39 @@ pub fn maybe_notify() {
     }
 }
 
+/// Immediately check for updates, print the result, and refresh the cache.
+/// Used by `oken update`.
+pub fn force_check() -> anyhow::Result<()> {
+    print!("Checking for updates… ");
+    std::io::Write::flush(&mut std::io::stdout())?;
+
+    let tag = fetch_latest_tag()?;
+    let latest_ver = tag.trim_start_matches('v');
+
+    // Refresh the cache so the background check timer resets
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    if let Ok(state_path) = crate::config::data_dir().map(|d| d.join("update_state")) {
+        let _ = std::fs::write(state_path, format!("{now}\t{tag}"));
+    }
+
+    if is_newer(latest_ver, CURRENT_VERSION) {
+        let install_cmd = if cfg!(windows) {
+            "powershell -c \"irm https://github.com/linkwithjoydeep/oken/releases/latest/download/oken-installer.ps1 | iex\""
+        } else {
+            "curl -LsSf https://github.com/linkwithjoydeep/oken/releases/latest/download/oken-installer.sh | sh"
+        };
+        println!("{tag} is available (you have v{CURRENT_VERSION})");
+        println!("Run: {install_cmd}");
+    } else {
+        println!("already up to date (v{CURRENT_VERSION})");
+    }
+
+    Ok(())
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 fn read_cached_tag(path: &std::path::Path) -> Option<String> {

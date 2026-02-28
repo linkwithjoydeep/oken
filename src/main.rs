@@ -378,6 +378,7 @@ fn is_known_subcommand(arg: &str) -> bool {
             | "export"
             | "import"
             | "completions"
+            | "update"
             | "help"
     )
 }
@@ -403,6 +404,10 @@ fn run_subcommand(cmd: Command, cfg: &oken_config::OkenConfig) -> Result<()> {
         Command::Keys { .. } => stub("keys"),
         Command::Export { .. } => stub("export"),
         Command::Import { .. } => stub("import"),
+        Command::Update => {
+            update_check::force_check()?;
+            Ok(())
+        }
         Command::Completions { shell } => {
             generate(shell, &mut Cli::command(), "oken", &mut std::io::stdout());
             Ok(())
