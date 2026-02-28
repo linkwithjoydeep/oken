@@ -91,28 +91,14 @@ pub enum Command {
     Config,
     /// Check for a newer version and print upgrade instructions
     Update,
-    /// Manage shell completions
+    /// Install shell completions (auto-detects shell and directory)
     Completions {
-        #[command(subcommand)]
-        command: CompletionsCommand,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum CompletionsCommand {
-    /// Install completions for your shell (auto-detects shell and directory)
-    Install {
         /// Shell to install for (default: auto-detected from $SHELL)
         #[arg(long)]
         shell: Option<clap_complete::Shell>,
         /// Directory to write the completion file into (default: auto-detected)
         #[arg(long)]
         dir: Option<PathBuf>,
-    },
-    /// Print completions to stdout for manual installation
-    Generate {
-        /// Shell to generate completions for
-        shell: clap_complete::Shell,
     },
 }
 

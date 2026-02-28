@@ -6,11 +6,6 @@ use clap_complete::{Shell, generate};
 
 use crate::cli::Cli;
 
-/// Print completions to stdout. Called by `oken completions generate <shell>`.
-pub fn generate_to_stdout(shell: Shell) {
-    generate(shell, &mut Cli::command(), "oken", &mut std::io::stdout());
-}
-
 /// Resolve the target directory, create it if needed, write the completion
 /// file, and print what was done. Called by `oken completions install`.
 pub fn install(shell: Option<Shell>, dir: Option<PathBuf>) -> Result<()> {

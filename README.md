@@ -244,36 +244,28 @@ TIME                 ALIAS          TARGET              DURATION  EXIT
 
 ### Shell Completions
 
-`oken completions install` auto-detects your shell from `$SHELL`, finds (or creates) the right completion directory, and writes the file:
+`oken completions` auto-detects your shell from `$SHELL`, finds (or creates) the right completion directory, and writes the file:
 
 ```bash
-oken completions install
+oken completions
 # Installed zsh completions → /Users/you/.zfunc/_oken
 ```
 
 For non-standard setups, point it at the right directory explicitly:
 
 ```bash
-oken completions install --dir ~/.config/zsh/.zfunc
+oken completions --dir ~/.config/zsh/.zfunc
 ```
 
 Force a specific shell regardless of `$SHELL`:
 
 ```bash
-oken completions install --shell bash
-```
-
-To print completions to stdout instead (for manual installation or piping):
-
-```bash
-oken completions generate zsh  > ~/.zfunc/_oken
-oken completions generate bash > ~/.bash_completion
-oken completions generate fish > ~/.config/fish/completions/oken.fish
+oken completions --shell bash
 ```
 
 **zsh:** the file is written as `_oken`. If the target directory isn't a well-known fpath location, `oken` prints the exact `fpath=...` line to add to your `.zshrc`.
 
-**bash / fish:** completions are written to the standard auto-sourced directories — no `.bashrc` or `.config/fish` edits required.
+**bash / fish:** completions are written to the standard auto-sourced directories — no extra config required.
 
 ---
 
@@ -358,9 +350,8 @@ Commands:
   audit [-n N]            View last N connection log entries (default 50)
   config                  Show active configuration values
   update                  Check for a newer version
-  completions             Manage shell completions
-    completions install [--shell <shell>] [--dir <dir>]
-    completions generate <shell>
+  completions [--shell <shell>] [--dir <dir>]
+                          Install shell completions
 ```
 
 ---
