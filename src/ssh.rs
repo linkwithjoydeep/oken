@@ -48,7 +48,7 @@ fn same_file(a: &PathBuf, b: &PathBuf) -> bool {
 }
 
 /// SSH flags that take a following argument value.
-const FLAGS_WITH_VALUES: &[&str] = &[
+pub(crate) const FLAGS_WITH_VALUES: &[&str] = &[
     "-p", "-i", "-o", "-l", "-L", "-R", "-D", "-F", "-J", "-W", "-b", "-c", "-m", "-e", "-S", "-E",
     "-B", "-w", "-O",
 ];

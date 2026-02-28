@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+pub use clap_complete;
 
 #[derive(Parser)]
 #[command(
@@ -13,6 +14,18 @@ use clap::{Parser, Subcommand};
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
+
+    /// Filter hosts by tag (open picker pre-filtered, or connect directly if one match)
+    #[arg(long)]
+    pub tag: Option<String>,
+
+    /// Skip the production-host warning prompt
+    #[arg(long)]
+    pub yes: bool,
+
+    /// Disable auto-reconnect on connection loss
+    #[arg(long = "no-reconnect")]
+    pub no_reconnect: bool,
 
     /// Arguments to pass through to ssh
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -28,8 +41,8 @@ pub enum Command {
     },
     /// Manage SSH tunnels
     Tunnel {
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
+        #[command(subcommand)]
+        command: TunnelCommand,
     },
     /// Execute commands on remote hosts
     Exec {
@@ -41,15 +54,16 @@ pub enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-    /// Print SSH config information
+    /// Print the resolved SSH command for a host
     Print {
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
+        /// Alias or host to resolve
+        host: String,
     },
-    /// Audit SSH configurations
+    /// View connection history
     Audit {
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
+        /// Number of recent entries to show
+        #[arg(short = 'n', long, default_value_t = 50)]
+        lines: usize,
     },
     /// Manage SSH keys
     Keys {
@@ -68,8 +82,8 @@ pub enum Command {
     },
     /// Generate shell completions
     Completions {
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
+        /// Shell to generate completions for
+        shell: clap_complete::Shell,
     },
 }
 
@@ -103,4 +117,28 @@ pub enum HostCommand {
         /// Alias name (currently opens the whole file)
         name: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum TunnelCommand {
+    /// Add a new tunnel profile (e.g., oken tunnel add db -L 5432:localhost:5432 prod-db)
+    Add {
+        /// Tunnel profile name
+        name: String,
+        /// SSH flags and target host
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Start a saved tunnel in the background
+    Start {
+        /// Tunnel profile name
+        name: String,
+    },
+    /// Stop a running tunnel
+    Stop {
+        /// Tunnel profile name
+        name: String,
+    },
+    /// List all tunnel profiles and their status
+    List,
 }

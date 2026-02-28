@@ -44,10 +44,17 @@ pub fn run_picker(initial_filter: Option<&str>) -> Result<hosts::Host> {
         })
         .collect();
 
-    // Sort: hosts with history first (most recent first), then the rest alphabetically
+    // Sort: group by first tag (alphabetically), untagged last.
+    // Within each group, most recently connected first, then alphabetical.
     picker_hosts.sort_by(|a, b| {
+        let a_group = a.host.tags.first().map(|s| s.as_str()).unwrap_or("\u{FFFF}");
+        let b_group = b.host.tags.first().map(|s| s.as_str()).unwrap_or("\u{FFFF}");
+        let group_cmp = a_group.cmp(b_group);
+        if group_cmp != std::cmp::Ordering::Equal {
+            return group_cmp;
+        }
         match (&a.last_connected, &b.last_connected) {
-            (Some(a_ts), Some(b_ts)) => b_ts.cmp(a_ts), // most recent first
+            (Some(a_ts), Some(b_ts)) => b_ts.cmp(a_ts),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
             (None, None) => a.host.alias.cmp(&b.host.alias),
@@ -142,6 +149,17 @@ fn filter_hosts(picker_hosts: &[PickerHost], query: &str) -> Vec<usize> {
         return (0..picker_hosts.len()).collect();
     }
     let q = query.to_lowercase();
+    if q.starts_with('#') {
+        let tag_q = &q[1..];
+        return picker_hosts
+            .iter()
+            .enumerate()
+            .filter(|(_, ph)| {
+                ph.host.tags.iter().any(|t| t.to_lowercase().contains(tag_q))
+            })
+            .map(|(i, _)| i)
+            .collect();
+    }
     picker_hosts
         .iter()
         .enumerate()
@@ -183,48 +201,66 @@ fn draw_host_list(
     filtered: &[usize],
     selected: usize,
 ) {
-    let items: Vec<ListItem> = filtered
-        .iter()
-        .enumerate()
-        .map(|(i, &idx)| {
-            let ph = &picker_hosts[idx];
-            let h = &ph.host;
+    // Determine if we should show group headers (any tagged hosts in the filtered set)
+    let show_headers = filtered.iter().any(|&idx| !picker_hosts[idx].host.tags.is_empty());
 
-            let prefix = if i == selected { "> " } else { "  " };
-            let target = match (&h.user, &h.hostname) {
-                (Some(u), Some(hn)) => format!("{}@{}", u, hn),
-                (None, Some(hn)) => hn.clone(),
-                _ => String::new(),
-            };
-            let tags = if h.tags.is_empty() {
-                String::new()
-            } else {
-                format!("[{}]", h.tags.join(", "))
-            };
-            let time = ph
-                .last_connected
-                .as_deref()
-                .map(format_relative_time)
-                .unwrap_or_default();
+    let mut items: Vec<ListItem> = Vec::new();
+    // Sentinel: use a value that can never match a real group
+    let mut last_group: Option<Option<String>> = None;
 
-            // Pad alias to 16 chars, target to 24 chars, tags to 20 chars
-            let text = format!(
-                "{}{:<16} {:<24} {:<20} {}",
-                prefix, h.alias, target, tags, time,
-            );
+    for (i, &idx) in filtered.iter().enumerate() {
+        let ph = &picker_hosts[idx];
+        let h = &ph.host;
 
-            let style = if i == selected {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::White)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
+        // Insert group header when group changes
+        if show_headers {
+            let group = h.tags.first().cloned();
+            if last_group.as_ref() != Some(&group) {
+                last_group = Some(group.clone());
+                let label = group.as_deref().unwrap_or("other");
+                items.push(ListItem::new(Line::from(vec![Span::styled(
+                    format!("  {label}"),
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::BOLD),
+                )])));
+            }
+        }
 
-            ListItem::new(Line::styled(text, style))
-        })
-        .collect();
+        let prefix = if i == selected { "> " } else { "  " };
+        let target = match (&h.user, &h.hostname) {
+            (Some(u), Some(hn)) => format!("{}@{}", u, hn),
+            (None, Some(hn)) => hn.clone(),
+            _ => String::new(),
+        };
+        let tags = if h.tags.is_empty() {
+            String::new()
+        } else {
+            format!("[{}]", h.tags.join(", "))
+        };
+        let time = ph
+            .last_connected
+            .as_deref()
+            .map(format_relative_time)
+            .unwrap_or_default();
+
+        // Pad alias to 16 chars, target to 24 chars, tags to 20 chars
+        let text = format!(
+            "{}{:<16} {:<24} {:<20} {}",
+            prefix, h.alias, target, tags, time,
+        );
+
+        let style = if i == selected {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        items.push(ListItem::new(Line::styled(text, style)));
+    }
 
     let list = List::new(items).block(
         Block::default()
