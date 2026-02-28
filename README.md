@@ -244,14 +244,20 @@ TIME                 ALIAS          TARGET              DURATION  EXIT
 
 ### Shell Completions
 
-`oken completions` auto-detects your shell from `$SHELL`, finds (or creates) the right completion directory, and writes the file:
+Run once and you're done:
 
 ```bash
 oken completions
-# Installed zsh completions → /Users/you/.zfunc/_oken
 ```
 
-For non-standard setups, point it at the right directory explicitly:
+`oken` auto-detects your shell and picks the best destination:
+
+- **zsh (Homebrew):** writes to `$(brew --prefix)/share/zsh/site-functions/_oken` — already in your `$fpath`, no config changes needed.
+- **zsh (no Homebrew):** writes to `~/.zfunc/_oken` (or your `$ZDOTDIR/.zfunc`) and patches your `.zshrc` with the required `fpath` entry automatically.
+- **fish:** writes to `~/.config/fish/completions/oken.fish` — fish auto-sources this directory, no setup needed.
+- **bash:** writes to `~/.local/share/bash-completion/completions/oken` — auto-sourced when the `bash-completion` package is installed.
+
+To install to a specific directory:
 
 ```bash
 oken completions --dir ~/.config/zsh/.zfunc
@@ -262,10 +268,6 @@ Force a specific shell regardless of `$SHELL`:
 ```bash
 oken completions --shell bash
 ```
-
-**zsh:** the file is written as `_oken`. If the target directory isn't a well-known fpath location, `oken` prints the exact `fpath=...` line to add to your `.zshrc`.
-
-**bash / fish:** completions are written to the standard auto-sourced directories — no extra config required.
 
 ---
 
