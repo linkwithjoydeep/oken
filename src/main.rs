@@ -116,13 +116,15 @@ fn connect_to_host(
     let target = ssh_args.first().cloned().unwrap_or_default();
     inject_keepalive(&mut ssh_args, cfg.keepalive_interval);
     record_host(host);
-    audit::log_connection(&host.alias, &target);
     print_connecting(&ssh_args);
-    if no_reconnect || !cfg.reconnect {
-        ssh::passthrough(&ssh_args)
+    let start = std::time::Instant::now();
+    let exit_code = if no_reconnect || !cfg.reconnect {
+        ssh::run(&ssh_args)?
     } else {
-        reconnect::run_with_reconnect(&ssh_args, cfg.reconnect_retries, cfg.reconnect_delay_secs)
-    }
+        reconnect::run_with_reconnect(&ssh_args, cfg.reconnect_retries, cfg.reconnect_delay_secs)?
+    };
+    audit::log_session(&host.alias, &target, start.elapsed().as_secs(), exit_code);
+    std::process::exit(exit_code);
 }
 
 /// Pass raw SSH args through with keepalive injection, prod warning, and optional reconnect.
@@ -152,15 +154,16 @@ fn connect_passthrough(
     let mut args = ssh_args.to_vec();
     inject_keepalive(&mut args, cfg.keepalive_interval);
     record_if_connecting(&args);
-    if let Some(target) = ssh::extract_target_host_full(ssh_args) {
-        audit::log_connection(&target, &target);
-    }
+    let alias = ssh::extract_target_host_full(ssh_args).unwrap_or_default();
     print_connecting(&args);
-    if no_reconnect || !cfg.reconnect {
-        ssh::passthrough(&args)
+    let start = std::time::Instant::now();
+    let exit_code = if no_reconnect || !cfg.reconnect {
+        ssh::run(&args)?
     } else {
-        reconnect::run_with_reconnect(&args, cfg.reconnect_retries, cfg.reconnect_delay_secs)
-    }
+        reconnect::run_with_reconnect(&args, cfg.reconnect_retries, cfg.reconnect_delay_secs)?
+    };
+    audit::log_session(&alias, &alias, start.elapsed().as_secs(), exit_code);
+    std::process::exit(exit_code);
 }
 
 /// Prepend `-o ServerAliveInterval=N -o ServerAliveCountMax=3` unless already set.

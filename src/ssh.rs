@@ -124,28 +124,17 @@ pub fn extract_identity_file(args: &[String]) -> Option<String> {
     None
 }
 
-/// Replace the current process with `ssh`, passing through all arguments.
-/// On Unix this uses exec() so signals, TTY, and exit codes work perfectly.
-pub fn passthrough(args: &[String]) -> Result<()> {
+/// Run `ssh` with the given arguments and return its exit code.
+/// Uses spawn()+wait() on all platforms so post-connection work (audit log,
+/// update check flush) can happen after the session ends.
+pub fn run(args: &[String]) -> Result<i32> {
     let ssh = find_ssh().context("failed to locate ssh")?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        let err = std::process::Command::new(&ssh).args(args).exec();
-        // exec() only returns on error
-        bail!("failed to exec ssh at {}: {}", ssh.display(), err);
-    }
-
-    #[cfg(not(unix))]
-    {
-        let status = std::process::Command::new(&ssh)
-            .args(args)
-            .stdin(std::process::Stdio::inherit())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .status()
-            .context(format!("failed to run ssh at {}", ssh.display()))?;
-        std::process::exit(status.code().unwrap_or(1));
-    }
+    let status = std::process::Command::new(&ssh)
+        .args(args)
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .with_context(|| format!("failed to run ssh at {}", ssh.display()))?;
+    Ok(status.code().unwrap_or(1))
 }
