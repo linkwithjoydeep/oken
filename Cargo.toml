@@ -3,6 +3,9 @@ name = "oken"
 version = "0.1.0"
 edition = "2024"
 description = "A smarter SSH CLI"
+license = "MIT"
+repository = "https://github.com/linkwithjoydeep/oken"
+homepage = "https://github.com/linkwithjoydeep/oken"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -18,3 +21,8 @@ clap_complete = "4"
 
 [dev-dependencies]
 tempfile = "3"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
