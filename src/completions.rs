@@ -66,15 +66,12 @@ fn install_zsh(dir: Option<PathBuf>) -> Result<()> {
     write_completions(Shell::Zsh, &file)?;
     println!("Installed zsh completions → {}", file.display());
 
-    // Print fpath hint unless the dir name makes it obvious it's already wired up.
-    if !looks_like_fpath_dir(&target_dir) {
-        println!(
-            "\nAdd to ~/.zshrc (or $ZDOTDIR/.zshrc) if not already there:\n\
-             \n  fpath=({dir} $fpath)\n  autoload -Uz compinit && compinit",
-            dir = target_dir.display()
-        );
-    }
-
+    println!(
+        "\nEnsure your ~/.zshrc (or $ZDOTDIR/.zshrc) contains:\n\
+         \n  fpath=({dir} $fpath)\n  autoload -Uz compinit && compinit\
+         \n\nThen reload: exec zsh",
+        dir = target_dir.display()
+    );
     Ok(())
 }
 
@@ -109,12 +106,6 @@ fn resolve_zsh_dir() -> Result<PathBuf> {
     Ok(preferred)
 }
 
-/// Suppress the fpath hint when the directory name already signals it's a
-/// standard completion location (user likely has it wired up already).
-fn looks_like_fpath_dir(dir: &std::path::Path) -> bool {
-    let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    matches!(name, ".zfunc" | "zfunc" | "completions" | "site-functions")
-}
 
 // ── bash ──────────────────────────────────────────────────────────────────────
 
