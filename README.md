@@ -210,9 +210,12 @@ oken tunnel list
 
 # Stop it
 oken tunnel stop db-tunnel
+
+# Remove a saved profile
+oken tunnel remove db-tunnel
 ```
 
-Tunnel state is tracked via SSH ControlMaster sockets — no PID files, no daemons.
+Tunnel state is tracked via SSH ControlMaster sockets — no PID files, no daemons. If a tunnel fails to start, the error from SSH is shown immediately.
 
 ### Print Resolved SSH Command
 
@@ -233,19 +236,44 @@ oken audit -n 100   # last 100
 ```
 
 ```
-TIME                 ALIAS          TARGET
-2026-02-28 10:42:01  prod-web       ubuntu@10.0.1.50
-2026-02-28 09:15:33  prod-db        deploy@10.0.1.51
-2026-02-27 18:03:11  staging-web    ubuntu@10.0.2.10
+TIME                 ALIAS          TARGET              DURATION  EXIT
+2026-02-28 10:42:01  prod-web       ubuntu@10.0.1.50    42m 07s   0
+2026-02-28 09:15:33  prod-db        deploy@10.0.1.51    5m 02s    0
+2026-02-27 18:03:11  staging-web    ubuntu@10.0.2.10    3s        255
 ```
 
 ### Shell Completions
 
+`oken completions install` auto-detects your shell from `$SHELL`, finds (or creates) the right completion directory, and writes the file:
+
 ```bash
-oken completions zsh  >> ~/.zfunc/_oken
-oken completions bash >> ~/.bash_completion
-oken completions fish >> ~/.config/fish/completions/oken.fish
+oken completions install
+# Installed zsh completions → /Users/you/.zfunc/_oken
 ```
+
+For non-standard setups, point it at the right directory explicitly:
+
+```bash
+oken completions install --dir ~/.config/zsh/.zfunc
+```
+
+Force a specific shell regardless of `$SHELL`:
+
+```bash
+oken completions install --shell bash
+```
+
+To print completions to stdout instead (for manual installation or piping):
+
+```bash
+oken completions generate zsh  > ~/.zfunc/_oken
+oken completions generate bash > ~/.bash_completion
+oken completions generate fish > ~/.config/fish/completions/oken.fish
+```
+
+**zsh:** the file is written as `_oken`. If the target directory isn't a well-known fpath location, `oken` prints the exact `fpath=...` line to add to your `.zshrc`.
+
+**bash / fish:** completions are written to the standard auto-sourced directories — no `.bashrc` or `.config/fish` edits required.
 
 ---
 
@@ -272,6 +300,8 @@ oken host edit
 
 Hosts are stored in `~/.config/oken/hosts.toml` alongside your existing `~/.ssh/config`. Both sources are merged automatically, with `hosts.toml` winning on conflicts.
 
+`oken host list` shows all hosts from both sources. Hosts from `~/.ssh/config` are marked `ssh config` and are read-only — `oken host remove` and `oken host edit` will reject them with a message pointing you to the right file.
+
 ---
 
 ## Configuration
@@ -284,11 +314,17 @@ reconnect            = true
 reconnect_retries    = 3
 reconnect_delay_secs = 5
 
-# SSH keep-alive interval in seconds (0 to disable)
+# SSH keep-alive interval in seconds
 keepalive_interval   = 60
 
 # Tags that trigger a confirmation prompt before connecting
 danger_tags          = ["prod", "production"]
+```
+
+To see the currently active configuration (defaults merged with your overrides):
+
+```bash
+oken config
 ```
 
 ---
@@ -305,11 +341,26 @@ Options:
   --no-reconnect  Disable auto-reconnect for this session
 
 Commands:
-  host        Manage saved hosts
-  tunnel      Manage tunnel profiles
-  print       Print the resolved SSH command for a host
-  audit       View connection history
-  completions Generate shell completions (bash, zsh, fish, elvish, powershell)
+  host                    Manage saved hosts
+    host add <name> <user@host> [--port N] [--key path] [--tag tag1 tag2]
+    host list
+    host remove <name>
+    host edit
+
+  tunnel                  Manage tunnel profiles
+    tunnel add <name> [ssh-flags] <host>
+    tunnel start <name>
+    tunnel stop  <name>
+    tunnel remove <name>
+    tunnel list
+
+  print <host>            Print the resolved SSH command for a host
+  audit [-n N]            View last N connection log entries (default 50)
+  config                  Show active configuration values
+  update                  Check for a newer version
+  completions             Manage shell completions
+    completions install [--shell <shell>] [--dir <dir>]
+    completions generate <shell>
 ```
 
 ---
