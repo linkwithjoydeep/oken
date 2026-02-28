@@ -6,7 +6,14 @@ pub use clap_complete;
 #[derive(Parser)]
 #[command(
     name = "oken",
-    version,
+    version = concat!(
+        env!("CARGO_PKG_VERSION"),
+        " (",
+        env!("GIT_HASH"),
+        " ",
+        env!("BUILD_DATE"),
+        ")"
+    ),
     about = "A smarter SSH CLI",
     // Don't error on unknown args — they'll be passed to ssh
     disable_help_subcommand = true,
