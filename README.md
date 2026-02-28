@@ -13,6 +13,10 @@
   <a href="#command-reference">Commands</a>
 </p>
 
+<p align="center">
+  <img src="assets/demo.gif" width="800" />
+</p>
+
 ---
 
 `oken` is a drop-in replacement for the `ssh` command. It passes every flag and argument through to the system SSH binary unchanged, so anything that works with `ssh` works with `oken` — no migration, no learning curve.
