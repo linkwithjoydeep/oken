@@ -1,5 +1,6 @@
 mod audit;
 mod cli;
+mod update_check;
 #[allow(dead_code)]
 mod config;
 #[allow(dead_code)]
@@ -30,6 +31,7 @@ use cli::{Cli, Command, HostCommand, TunnelCommand};
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let cfg = oken_config::load_config();
+    update_check::maybe_notify();
 
     if args.len() > 1 && !is_known_subcommand(&args[1]) && !is_oken_flag(&args[1]) {
         // Single bare arg that doesn't look like a direct SSH target — maybe a partial filter

@@ -75,6 +75,20 @@ Requires [Rust](https://rustup.rs) 1.80 or later.
 cargo install --git https://github.com/linkwithjoydeep/oken
 ```
 
+### Updating
+
+Run the same installer command again — it always fetches the latest release:
+
+```bash
+# macOS and Linux
+curl -LsSf https://github.com/linkwithjoydeep/oken/releases/latest/download/oken-installer.sh | sh
+
+# Windows
+powershell -c "irm https://github.com/linkwithjoydeep/oken/releases/latest/download/oken-installer.ps1 | iex"
+```
+
+`oken` also checks for new versions automatically once every 24 hours and prints a one-line notice when one is available. The check runs in the background and never delays a connection.
+
 ### Optional: alias as `ssh`
 
 ```bash
@@ -309,6 +323,7 @@ Commands:
 | `~/.config/oken/config.toml` | Settings (reconnect, keep-alive, danger tags) |
 | `~/.local/share/oken/history.db` | Connection history (used for picker sorting) |
 | `~/.local/share/oken/audit.log` | Append-only connection audit log |
+| `~/.local/share/oken/update_state` | Cached update check result (timestamp + latest version) |
 
 All paths respect `$XDG_CONFIG_HOME` and `$XDG_DATA_HOME`.
 
