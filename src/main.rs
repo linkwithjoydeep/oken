@@ -1,5 +1,6 @@
 mod audit;
 mod cli;
+mod completions;
 mod update_check;
 mod config;
 mod history;
@@ -19,10 +20,7 @@ use std::io::{self, BufRead, Write};
 use anyhow::Result;
 use clap::Parser;
 
-use clap::CommandFactory;
-use clap_complete::generate;
-
-use cli::{Cli, Command, HostCommand, TunnelCommand};
+use cli::{Cli, Command, CompletionsCommand, HostCommand, TunnelCommand};
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -405,10 +403,13 @@ fn run_subcommand(cmd: Command, cfg: &oken_config::OkenConfig) -> Result<()> {
             update_check::force_check()?;
             Ok(())
         }
-        Command::Completions { shell } => {
-            generate(shell, &mut Cli::command(), "oken", &mut std::io::stdout());
-            Ok(())
-        }
+        Command::Completions { command } => match command {
+            CompletionsCommand::Install { shell, dir } => completions::install(shell, dir),
+            CompletionsCommand::Generate { shell } => {
+                completions::generate_to_stdout(shell);
+                Ok(())
+            }
+        },
     }
 }
 
